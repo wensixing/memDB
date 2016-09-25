@@ -20,38 +20,112 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
 
 using namespace std;
 class Transaction {
 private:
-    vector<vector<string>> recoverLogs;
+    unordered_map<string, int> dataToBeSet;
+    unordered_set<string> dataToBeUnset;
+    unordered_map<int, unordered_set<string>> cnt;
+    void removekeyFromCnt(string key) {
+        int originVal = dataToBeSet[key];
+        cnt[originVal].erase(key);
+        if (cnt[originVal].size() == 0) {
+            cnt.erase(originVal);
+        }
+    }
 public:
     Transaction() {
     }
-    void addLog(vector<string> cmd) {
-        recoverLogs.push_back(cmd);
+    void setTransactionData(shared_ptr<Transaction> tran) {
+        dataToBeSet = tran->getDataToBeSet();
+        dataToBeUnset = tran->getDataToBeUnset();
+        cnt = tran->getCnt();
     }
-    vector<vector<string>> getRecoverLogs() {
-        return recoverLogs;
+    unordered_map<string, int> getDataToBeSet() {
+        return dataToBeSet;
+    }
+    unordered_set<string> getDataToBeUnset() {
+        return dataToBeUnset;
+    }
+    unordered_map<int, unordered_set<string>> getCnt() {
+        return cnt;
+    }
+    bool ifToBeSet(string key) {
+        return dataToBeSet.find(key) != dataToBeSet.end();
+    }
+    bool ifToBeUnset(string key) {
+        return dataToBeUnset.find(key) != dataToBeUnset.end();
+    }
+    void get(string key) {
+        if (ifToBeSet(key)) {
+            cout << "> " << dataToBeSet[key] << endl;
+        } else if (ifToBeUnset(key)) {
+            cout << "> NULL" << endl;
+        }
+    }
+    void set(string key, int value) {
+        if (dataToBeSet.find(key) != dataToBeSet.end()) {
+            if (dataToBeSet[key] == value) {
+                return;
+            } else {
+                removekeyFromCnt(key);
+            }
+        }
+        if (dataToBeUnset.find(key) != dataToBeUnset.end()) {
+            dataToBeUnset.erase(key);
+        }
+        dataToBeSet[key] = value;
+        cnt[value].insert(key);
+    }
+    void unset(string key) {
+        if (ifToBeUnset(key)) {
+            return;
+        }
+        if (ifToBeSet(key)) {
+            removekeyFromCnt(key);
+            dataToBeSet.erase(key);
+        }
+        dataToBeUnset.insert(key);
+    }
+    void numberEqualTo(int value, unordered_set<string> data) {
+        unordered_set<string>::iterator it;
+        for (it = data.begin(); it != data.end(); it ++) {
+            if (dataToBeUnset.find(*it) != dataToBeUnset.end() || dataToBeSet.find(*it) != dataToBeSet.end()) {
+                data.erase(it);
+            }
+        }
+        int len = int(data.size());
+        if (cnt.find(value) != cnt.end()) {
+            len += cnt.size();
+        }
+        cout << "> " << len << endl;
     }
 };
 class SimpleDatabase {
 private:
     unordered_map<string, int> data;
-    unordered_map<int, unordered_set<string>> dataKey;
+    unordered_map<int, unordered_set<string>> cnt;
     vector<shared_ptr<Transaction>> trans;
     shared_ptr<Transaction> cur;
     SimpleDatabase() {
         cur = nullptr;
     }
+    void removeKeyFromCnt(string key) {
+        int originValue = data[key];
+        cnt[originValue].erase(key);
+        if (cnt[originValue].size() == 0) {
+            cnt.erase(originValue);
+        }
+    }
     void set(string key, int value) {
         if (data.find(key) != data.end() && data[key] == value) {
             return;
         }
-        int originValue = data[key];
-        dataKey[originValue].erase(key);
+        removeKeyFromCnt(key);
         data[key] = value;
-        dataKey[value].insert(key);
+        cnt[value].insert(key);
     }
     void get(string key) {
         if (data.find(key) == data.end()) {
@@ -62,23 +136,18 @@ private:
         cout << endl;
     }
     void numberEqualTo(int value) {
-        if (dataKey.find(value) == dataKey.end()) {
-            cout << "> 0";
-        } else {
-            cout << "> " <<int(dataKey[value].size());
+        int num = 0;
+        if (cnt.find(value) != cnt.end()) {
+            num = int(cnt[value].size());
         }
-        cout << endl;
+        cout << "> " << num << endl;
     }
     void unset(string key) {
         if (data.find(key) == data.end()) {
             return;
         }
-        int value = data[key];
+        removeKeyFromCnt(key);
         data.erase(key);
-        dataKey[value].erase(key);
-        if (dataKey[value].size() == 0) {
-            dataKey.erase(value);
-        }
     }
     vector<string> spliteCmd(string cmd) {
         vector<string> res;
@@ -120,15 +189,28 @@ private:
         showUsage();
     }
     void startTransaction() {
-        if (cur != nullptr) {
-            trans.push_back(cur);
+        if (cur == nullptr) {
+            cur = make_shared<Transaction>();
+            return;
         }
+        trans.push_back(cur);
         cur = make_shared<Transaction>();
+        cur->setTransactionData(trans.back());
     }
     void commitTransaction() {
         if (cur == nullptr) {
             cout << "> NO TRANSACTION" << endl;
             return;
+        }
+        unordered_map<string, int> setData = cur->getDataToBeSet();
+        unordered_set<string> unsetData = cur->getDataToBeUnset();
+        unordered_map<string, int>::iterator itSet;
+        for (itSet = setData.begin(); itSet != setData.end(); itSet ++) {
+            set(itSet->first, itSet->second);
+        }
+        unordered_set<string>::iterator itUnset;
+        for (itUnset = unsetData.begin(); itUnset != unsetData.end(); itUnset ++) {
+            unset(*itUnset);
         }
         cur = nullptr;
         trans.clear();
@@ -138,11 +220,6 @@ private:
             cout << "> NO TRANSACTION" << endl;
             return;
         }
-        vector<vector<string>> logs = cur->getRecoverLogs();
-        while (logs.size() > 0) {
-            executeSingleCmd(logs.back());
-            logs.pop_back();
-        }
         if (trans.size() > 0) {
             cur = trans.back();
             trans.pop_back();
@@ -150,61 +227,55 @@ private:
             cur = nullptr;
         }
     }
-    void addTransactionLog(vector<string> cmd) {
-        if (cmd[0] == "SET") {
-            string key = cmd[1];
-            if (data.find(key) == data.end()) {
-                vector<string> log = {"UNSET", key};
-                cur->addLog(log);
-            } else {
-                int originValue = data[key];
-                vector<string> log = {"SET", key, to_string(originValue)};
-                cur->addLog(log);
-            }
-        } else if (cmd[0] == "UNSET") {
-            string key = cmd[1];
-            if (data.find(key) != data.end()) {
-                int originValue = data[key];
-                vector<string> log = {"SET", key, to_string(originValue)};
-                cur->addLog(log);
-            }
-        }
-    }
-    int executeSingleCmd(vector<string> cmd, bool executeLog = false) {
+    int executeSingleCmd(vector<string> cmd) {
         if (cmd[0] == "SET") {
             if (cmd.size() != 3) {
                 return 0;
             } else {
-                if (cur != nullptr && !executeLog) {
-                    addTransactionLog(cmd);
-                }
                 string key = cmd[1];
                 int value = stoi(cmd[2]);
-                set(key, value);
+                if (cur != nullptr) {
+                    cur->set(key, value);
+                } else {
+                    set(key, value);
+                }
             }
         } else if (cmd[0] == "UNSET") {
             if (cmd.size() != 2) {
                 return 0;
             } else {
-                if (cur != nullptr && !executeLog) {
-                    addTransactionLog(cmd);
-                }
                 string key = cmd[1];
-                unset(key);
+                if (cur != nullptr) {
+                    cur->unset(key);
+                } else {
+                    unset(key);
+                }
             }
         } else if (cmd[0] == "GET") {
             if (cmd.size() != 2) {
                 return 0;
             } else {
                 string key = cmd[1];
-                get(key);
+                if (cur != nullptr && (cur->ifToBeSet(key) || cur->ifToBeUnset(key))) {
+                    cur->get(key);
+                } else {
+                    get(key);
+                }
             }
         } else if (cmd[0] == "NUMEQUALTO") {
             if (cmd.size() != 2) {
                 return 0;
             } else {
                 int value = stoi(cmd[1]);
-                numberEqualTo(value);
+                if (cur != nullptr) {
+                    unordered_set<string> data;
+                    if (cnt.find(value) != cnt.end()) {
+                        data = cnt[value];
+                    }
+                    cur->numberEqualTo(value, data);
+                } else {
+                    numberEqualTo(value);
+                }
             }
         } else if (cmd[0] == "BEGIN") {
             startTransaction();
