@@ -28,7 +28,7 @@ private:
     unordered_map<string, int> dataToBeSet;
     unordered_set<string> dataToBeUnset;
     unordered_map<int, unordered_set<string>> cnt;
-    void removekeyFromCnt(string key) {
+    void removeKeyFromCnt(string key) {
         int originVal = dataToBeSet[key];
         cnt[originVal].erase(key);
         if (cnt[originVal].size() == 0) {
@@ -39,9 +39,9 @@ public:
     Transaction() {
     }
     void setTransactionData(shared_ptr<Transaction> tran) {
-        dataToBeSet = tran->getDataToBeSet();
-        dataToBeUnset = tran->getDataToBeUnset();
-        cnt = tran->getCnt();
+        dataToBeSet     = tran->getDataToBeSet();
+        dataToBeUnset   = tran->getDataToBeUnset();
+        cnt             = tran->getCnt();
     }
     unordered_map<string, int> getDataToBeSet() {
         return dataToBeSet;
@@ -66,14 +66,14 @@ public:
         }
     }
     void set(string key, int value) {
-        if (dataToBeSet.find(key) != dataToBeSet.end()) {
+        if (ifToBeSet(key)) {
             if (dataToBeSet[key] == value) {
                 return;
             } else {
-                removekeyFromCnt(key);
+                removeKeyFromCnt(key);
             }
         }
-        if (dataToBeUnset.find(key) != dataToBeUnset.end()) {
+        if (ifToBeUnset(key)) {
             dataToBeUnset.erase(key);
         }
         dataToBeSet[key] = value;
@@ -84,7 +84,7 @@ public:
             return;
         }
         if (ifToBeSet(key)) {
-            removekeyFromCnt(key);
+            removeKeyFromCnt(key);
             dataToBeSet.erase(key);
         }
         dataToBeUnset.insert(key);
@@ -92,7 +92,7 @@ public:
     void numberEqualTo(int value, unordered_set<string> data) {
         unordered_set<string>::iterator it;
         for (it = data.begin(); it != data.end(); it ++) {
-            if (dataToBeUnset.find(*it) != dataToBeUnset.end() || dataToBeSet.find(*it) != dataToBeSet.end()) {
+            if (ifToBeUnset(*it) || ifToBeSet(*it)) {
                 data.erase(it);
             }
         }
@@ -202,8 +202,8 @@ private:
             cout << "> NO TRANSACTION" << endl;
             return;
         }
-        unordered_map<string, int> setData = cur->getDataToBeSet();
-        unordered_set<string> unsetData = cur->getDataToBeUnset();
+        unordered_map<string, int> setData  = cur->getDataToBeSet();
+        unordered_set<string> unsetData     = cur->getDataToBeUnset();
         unordered_map<string, int>::iterator itSet;
         for (itSet = setData.begin(); itSet != setData.end(); itSet ++) {
             set(itSet->first, itSet->second);
