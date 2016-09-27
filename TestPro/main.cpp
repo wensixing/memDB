@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
+#include <regex>
 
 using namespace std;
 class DataSet {
@@ -128,29 +129,8 @@ private:
         database = make_shared<Database>();
     }
     vector<string> spliteCmd(string cmd) {
-        vector<string> res;
-        int start = 0;
-        // remove head spaces
-        for (int i = 0; i < cmd.length(); i ++) {
-            if (cmd[i] != ' ') {
-                start = i;
-                break;
-            }
-        }
-        string cur;
-        for (int i = start; i < cmd.length(); i ++) {
-            if (cmd[i] == ' ') {
-                if (cur.length() > 0) {
-                    res.push_back(cur);
-                    cur.clear();
-                }
-            } else {
-                cur += cmd[i];
-            }
-            if (i == cmd.length() - 1 && cur.length() > 0) {
-                res.push_back(cur);
-            }
-        }
+        regex ws_re("\\s+"); // whitespace
+        vector<string> res = {std::sregex_token_iterator(cmd.begin(), cmd.end(), ws_re, -1), {}};
         return res;
     }
     void showUsage() {
@@ -278,9 +258,10 @@ private:
     }
     int getDataCntSizeWithout(unordered_set<string> current) {
         unordered_set<string>::iterator it;
-        for (it = current.begin(); it != current.end(); it ++) {
+        unordered_set<string> origin = current;
+        for (it = origin.begin(); it != origin.end(); it ++) {
             if (cur->ifToBeUnset(*it) || cur->ifContains(*it)) {
-                current.erase(it);
+                current.erase(*it);
             }
         }
         return int(current.size());
