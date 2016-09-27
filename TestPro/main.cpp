@@ -107,15 +107,6 @@ public:
     bool ifToBeUnset(string key) {
         return dataToBeUnset.find(key) != dataToBeUnset.end();
     }
-    int getCntSizeWithoutTransactionData(int value, unordered_set<string> data) {
-        unordered_set<string>::iterator it;
-        for (it = data.begin(); it != data.end(); it ++) {
-            if (ifToBeUnset(*it) || ifContains(*it)) {
-                data.erase(it);
-            }
-        }
-        return int(data.size());
-    }
 };
 class Database : public DataSet {
 };
@@ -125,8 +116,8 @@ private:
     shared_ptr<Transaction> cur;
     shared_ptr<Database> database;
     SimpleDatabaseConsole() {
-        cur = nullptr;
-        database = make_shared<Database>();
+        cur         = nullptr;
+        database    = make_shared<Database>();
     }
     vector<string> spliteCmd(string cmd) {
         regex ws_re("\\s+"); // whitespace
