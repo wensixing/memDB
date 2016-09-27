@@ -23,131 +23,99 @@
 #include <memory>
 
 using namespace std;
-class Transaction {
-private:
-    unordered_map<string, int> dataToBeSet;
-    unordered_set<string> dataToBeUnset;
+class DataSet {
+protected:
+    unordered_map<string, int> data;
     unordered_map<int, unordered_set<string>> cnt;
     void removeKeyFromCnt(string key) {
-        int originVal = dataToBeSet[key];
+        int originVal = data[key];
         cnt[originVal].erase(key);
         if (cnt[originVal].size() == 0) {
             cnt.erase(originVal);
         }
     }
 public:
-    Transaction() {
-    }
-    void setTransactionData(shared_ptr<Transaction> tran) {
-        dataToBeSet     = tran->getDataToBeSet();
-        dataToBeUnset   = tran->getDataToBeUnset();
-        cnt             = tran->getCnt();
-    }
-    unordered_map<string, int> getDataToBeSet() {
-        return dataToBeSet;
-    }
-    unordered_set<string> getDataToBeUnset() {
-        return dataToBeUnset;
+    unordered_map<string, int> getData() {
+        return data;
     }
     unordered_map<int, unordered_set<string>> getCnt() {
         return cnt;
     }
-    bool ifToBeSet(string key) {
-        return dataToBeSet.find(key) != dataToBeSet.end();
+    bool ifContains(string key) {
+        return data.find(key) != data.end();
     }
-    bool ifToBeUnset(string key) {
-        return dataToBeUnset.find(key) != dataToBeUnset.end();
-    }
-    void get(string key) {
-        if (ifToBeSet(key)) {
-            cout << "> " << dataToBeSet[key] << endl;
-        } else if (ifToBeUnset(key)) {
-            cout << "> NULL" << endl;
-        }
+    int get(string key) {
+        return data[key];
     }
     void set(string key, int value) {
-        if (ifToBeSet(key)) {
-            if (dataToBeSet[key] == value) {
-                return;
-            } else {
-                removeKeyFromCnt(key);
-            }
-        }
-        if (ifToBeUnset(key)) {
-            dataToBeUnset.erase(key);
-        }
-        dataToBeSet[key] = value;
-        cnt[value].insert(key);
-    }
-    void unset(string key) {
-        if (ifToBeUnset(key)) {
-            return;
-        }
-        if (ifToBeSet(key)) {
-            removeKeyFromCnt(key);
-            dataToBeSet.erase(key);
-        }
-        dataToBeUnset.insert(key);
-    }
-    void numberEqualTo(int value, unordered_set<string> data) {
-        unordered_set<string>::iterator it;
-        for (it = data.begin(); it != data.end(); it ++) {
-            if (ifToBeUnset(*it) || ifToBeSet(*it)) {
-                data.erase(it);
-            }
-        }
-        int len = int(data.size());
-        if (cnt.find(value) != cnt.end()) {
-            len += cnt.size();
-        }
-        cout << "> " << len << endl;
-    }
-};
-class SimpleDatabase {
-private:
-    unordered_map<string, int> data;
-    unordered_map<int, unordered_set<string>> cnt;
-    vector<shared_ptr<Transaction>> trans;
-    shared_ptr<Transaction> cur;
-    SimpleDatabase() {
-        cur = nullptr;
-    }
-    void removeKeyFromCnt(string key) {
-        int originValue = data[key];
-        cnt[originValue].erase(key);
-        if (cnt[originValue].size() == 0) {
-            cnt.erase(originValue);
-        }
-    }
-    void set(string key, int value) {
-        if (data.find(key) != data.end() && data[key] == value) {
+        if (ifContains(key) && data[key] == value) {
             return;
         }
         removeKeyFromCnt(key);
         data[key] = value;
         cnt[value].insert(key);
     }
-    void get(string key) {
-        if (data.find(key) == data.end()) {
-            cout << "> NULL";
-        } else {
-            cout << "> " << data[key];
-        }
-        cout << endl;
-    }
-    void numberEqualTo(int value) {
-        int num = 0;
-        if (cnt.find(value) != cnt.end()) {
-            num = int(cnt[value].size());
-        }
-        cout << "> " << num << endl;
-    }
     void unset(string key) {
-        if (data.find(key) == data.end()) {
+        if (!ifContains(key)) {
             return;
         }
         removeKeyFromCnt(key);
         data.erase(key);
+    }
+    int numberEqualTo(int value) {
+        int num = 0;
+        if (cnt.find(value) != cnt.end()) {
+            num = int(cnt[value].size());
+        }
+        return num;
+    }
+    
+};
+class Transaction : public DataSet {
+private:
+    unordered_set<string> dataToBeUnset;
+public:
+    Transaction() {
+    }
+    void unset(string key) {
+        DataSet::unset(key);
+        if (!ifToBeUnset(key)) {
+            dataToBeUnset.insert(key);
+        }
+    }
+    void set(string key, int value) {
+        DataSet::set(key, value);
+        if (ifToBeUnset(key)) {
+            dataToBeUnset.erase(key);
+        }
+    }
+    void setTransactionData(shared_ptr<Transaction> tran) {
+        data            = tran->getData();
+        dataToBeUnset   = tran->getDataToBeUnset();
+        cnt             = tran->getCnt();
+    }
+    unordered_set<string> getDataToBeUnset() {
+        return dataToBeUnset;
+    }
+    bool ifToBeUnset(string key) {
+        return dataToBeUnset.find(key) != dataToBeUnset.end();
+    }
+    int getCntWithoutTransactionData(int value, unordered_set<string> data) {
+        unordered_set<string>::iterator it;
+        for (it = data.begin(); it != data.end(); it ++) {
+            if (ifToBeUnset(*it) || ifContains(*it)) {
+                data.erase(it);
+            }
+        }
+        return int(data.size());
+    }
+};
+class SimpleDatabase: public DataSet {
+private:
+    vector<shared_ptr<Transaction>> trans;
+    shared_ptr<Transaction> cur;
+    SimpleDatabase() {
+        cur = nullptr;
     }
     vector<string> spliteCmd(string cmd) {
         vector<string> res;
@@ -202,7 +170,7 @@ private:
             cout << "> NO TRANSACTION" << endl;
             return;
         }
-        unordered_map<string, int> setData  = cur->getDataToBeSet();
+        unordered_map<string, int> setData  = cur->getData();
         unordered_set<string> unsetData     = cur->getDataToBeUnset();
         unordered_map<string, int>::iterator itSet;
         for (itSet = setData.begin(); itSet != setData.end(); itSet ++) {
@@ -256,26 +224,38 @@ private:
                 return 0;
             } else {
                 string key = cmd[1];
-                if (cur != nullptr && (cur->ifToBeSet(key) || cur->ifToBeUnset(key))) {
-                    cur->get(key);
+                cout << "> ";
+                if (cur != nullptr && (cur->ifContains(key) || cur->ifToBeUnset(key))) {
+                    if (cur->ifContains(key)) {
+                        cout << cur->get(key);
+                    } else {
+                        cout << "NULL";
+                    }
                 } else {
-                    get(key);
+                    if (ifContains(key)) {
+                        cout << get(key);
+                    } else {
+                        cout << "NULL";
+                    }
                 }
+                cout << endl;
             }
         } else if (cmd[0] == "NUMEQUALTO") {
             if (cmd.size() != 2) {
                 return 0;
             } else {
                 int value = stoi(cmd[1]);
+                int num = 0;
                 if (cur != nullptr) {
                     unordered_set<string> data;
                     if (cnt.find(value) != cnt.end()) {
                         data = cnt[value];
                     }
-                    cur->numberEqualTo(value, data);
+                    num = cur->getCntWithoutTransactionData(value, data) + cur->numberEqualTo(value);
                 } else {
-                    numberEqualTo(value);
+                    num = numberEqualTo(value);
                 }
+                cout << "> " << num << endl;
             }
         } else if (cmd[0] == "BEGIN") {
             startTransaction();
