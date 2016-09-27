@@ -69,7 +69,13 @@ public:
         }
         return num;
     }
-    
+    unordered_set<string> getCntForValue(int value) {
+        unordered_set<string> res;
+        if (cnt.find(value) != cnt.end()) {
+            res = cnt[value];
+        }
+        return res;
+    }
 };
 class Transaction : public DataSet {
 private:
@@ -100,7 +106,7 @@ public:
     bool ifToBeUnset(string key) {
         return dataToBeUnset.find(key) != dataToBeUnset.end();
     }
-    int getCntWithoutTransactionData(int value, unordered_set<string> data) {
+    int getCntSizeWithoutTransactionData(int value, unordered_set<string> data) {
         unordered_set<string>::iterator it;
         for (it = data.begin(); it != data.end(); it ++) {
             if (ifToBeUnset(*it) || ifContains(*it)) {
@@ -110,12 +116,16 @@ public:
         return int(data.size());
     }
 };
-class SimpleDatabase: public DataSet {
+class Database : public DataSet {
+};
+class SimpleDatabaseConsole {
 private:
     vector<shared_ptr<Transaction>> trans;
     shared_ptr<Transaction> cur;
-    SimpleDatabase() {
+    shared_ptr<Database> database;
+    SimpleDatabaseConsole() {
         cur = nullptr;
+        database = make_shared<Database>();
     }
     vector<string> spliteCmd(string cmd) {
         vector<string> res;
@@ -174,11 +184,11 @@ private:
         unordered_set<string> unsetData     = cur->getDataToBeUnset();
         unordered_map<string, int>::iterator itSet;
         for (itSet = setData.begin(); itSet != setData.end(); itSet ++) {
-            set(itSet->first, itSet->second);
+            database->set(itSet->first, itSet->second);
         }
         unordered_set<string>::iterator itUnset;
         for (itUnset = unsetData.begin(); itUnset != unsetData.end(); itUnset ++) {
-            unset(*itUnset);
+            database->unset(*itUnset);
         }
         cur = nullptr;
         trans.clear();
@@ -205,7 +215,7 @@ private:
                 if (cur != nullptr) {
                     cur->set(key, value);
                 } else {
-                    set(key, value);
+                    database->set(key, value);
                 }
             }
         } else if (cmd[0] == "UNSET") {
@@ -216,7 +226,7 @@ private:
                 if (cur != nullptr) {
                     cur->unset(key);
                 } else {
-                    unset(key);
+                    database->unset(key);
                 }
             }
         } else if (cmd[0] == "GET") {
@@ -232,8 +242,8 @@ private:
                         cout << "NULL";
                     }
                 } else {
-                    if (ifContains(key)) {
-                        cout << get(key);
+                    if (database->ifContains(key)) {
+                        cout << database->get(key);
                     } else {
                         cout << "NULL";
                     }
@@ -247,13 +257,9 @@ private:
                 int value = stoi(cmd[1]);
                 int num = 0;
                 if (cur != nullptr) {
-                    unordered_set<string> data;
-                    if (cnt.find(value) != cnt.end()) {
-                        data = cnt[value];
-                    }
-                    num = cur->getCntWithoutTransactionData(value, data) + cur->numberEqualTo(value);
+                    num = getDataCntSizeWithout(database->getCntForValue(value)) + cur->numberEqualTo(value);
                 } else {
-                    num = numberEqualTo(value);
+                    num = database->numberEqualTo(value);
                 }
                 cout << "> " << num << endl;
             }
@@ -270,11 +276,20 @@ private:
         }
         return 1;
     }
+    int getDataCntSizeWithout(unordered_set<string> current) {
+        unordered_set<string>::iterator it;
+        for (it = current.begin(); it != current.end(); it ++) {
+            if (cur->ifToBeUnset(*it) || cur->ifContains(*it)) {
+                current.erase(it);
+            }
+        }
+        return int(current.size());
+    }
 public:
-    static SimpleDatabase* getInstance() {
-        static SimpleDatabase* sdInstance;
+    static SimpleDatabaseConsole* getInstance() {
+        static SimpleDatabaseConsole* sdInstance;
         if (sdInstance == nullptr) {
-            sdInstance = new SimpleDatabase();
+            sdInstance = new SimpleDatabaseConsole();
         }
         return sdInstance;
     }
@@ -294,7 +309,7 @@ public:
 };
 int main(int argc, const char * argv[]) {
     /* Enter your code here. Read input from STDIN. Print output to STDOUT */
-    SimpleDatabase* inst = SimpleDatabase::getInstance();
+    SimpleDatabaseConsole* inst = SimpleDatabaseConsole::getInstance();
     vector<string> res;
     while (true) {
         string cmd;
