@@ -78,11 +78,13 @@ public:
         return res;
     }
 };
-class Transaction : public DataSet {
+
+
+class TransactionData : public DataSet {
 private:
     unordered_set<string> dataToBeUnset;
 public:
-    Transaction() {
+    TransactionData() {
     }
     void unset(string key) {
         DataSet::unset(key);
@@ -96,29 +98,96 @@ public:
             dataToBeUnset.erase(key);
         }
     }
-    void setTransactionData(shared_ptr<Transaction> tran) {
-        data            = tran->getData();
-        dataToBeUnset   = tran->getDataToBeUnset();
-        cnt             = tran->getCnt();
-    }
     unordered_set<string> getDataToBeUnset() {
         return dataToBeUnset;
     }
     bool ifToBeUnset(string key) {
         return dataToBeUnset.find(key) != dataToBeUnset.end();
     }
+    void clear() {
+        data.clear();
+        cnt.clear();
+        dataToBeUnset.clear();
+    }
 };
-class Database : public DataSet {
+
+class Transaction {
+private:
+    vector<vector<string>> recoverLogs;
+public:
+    Transaction() {
+    }
+    void addLog(vector<string> cmd) {
+        recoverLogs.push_back(cmd);
+    }
+    vector<vector<string>> getRecoverLogs() {
+        return recoverLogs;
+    }
+};
+class TransactionSet {
+private:
+    vector<shared_ptr<Transaction>> trans;
+    shared_ptr<TransactionData> transData;
+    unordered_set<string> insertedFromDB;
+public:
+    TransactionSet() {
+        transData = make_shared<TransactionData>();
+    }
+    shared_ptr<Transaction> getCur() {
+        return trans.back();
+    }
+    shared_ptr<TransactionData> getData() {
+        return transData;
+    }
+    bool ifInserted(string key) {
+        return insertedFromDB.find(key) != insertedFromDB.end();
+    }
+    void markAsInserted(string key) {
+        insertedFromDB.insert(key);
+    }
+    void startNew() {
+        shared_ptr<Transaction> cur = make_shared<Transaction>();
+        trans.push_back(cur);
+    }
+    void rollback() {
+        trans.pop_back();
+    }
+    bool empty() {
+        return trans.empty();
+    }
+    void clear() {
+        trans.clear();
+        insertedFromDB.clear();
+        transData->clear();
+    }
+    void addTransactionLog(vector<string> cmd) {
+        if (cmd[0] == "SET") {
+            string key = cmd[1];
+            if (transData->ifContains(key)) {
+                int originValue = transData->get(key);
+                vector<string> log = {"SET", key, to_string(originValue)};
+                getCur()->addLog(log);
+            } else {
+                vector<string> log = {"UNSET", key};
+                getCur()->addLog(log);
+            }
+        } else if (cmd[0] == "UNSET") {
+            string key = cmd[1];
+            if (transData->ifContains(key)) {
+                int originValue = transData->get(key);
+                vector<string> log = {"SET", key, to_string(originValue)};
+                getCur()->addLog(log);
+            }
+        }
+    }
+};
+
+class DatabaseData : public DataSet {
 };
 class SimpleDatabaseConsole {
 private:
-    vector<shared_ptr<Transaction>> trans;
-    shared_ptr<Transaction> cur;
-    shared_ptr<Database> database;
-    SimpleDatabaseConsole() {
-        cur         = nullptr;
-        database    = make_shared<Database>();
-    }
+    shared_ptr<DatabaseData> database;
+    shared_ptr<TransactionSet> trans;
     vector<string> spliteCmd(string cmd) {
         regex ws_re("\\s+"); // whitespace
         vector<string> res = {std::sregex_token_iterator(cmd.begin(), cmd.end(), ws_re, -1), {}};
@@ -138,21 +207,15 @@ private:
         showUsage();
     }
     void startTransaction() {
-        if (cur == nullptr) {
-            cur = make_shared<Transaction>();
-            return;
-        }
-        trans.push_back(cur);
-        cur = make_shared<Transaction>();
-        cur->setTransactionData(trans.back());
+        trans->startNew();
     }
     void commitTransaction() {
-        if (cur == nullptr) {
+        if (trans->empty()) {
             cout << "> NO TRANSACTION" << endl;
             return;
         }
-        unordered_map<string, int> setData  = cur->getData();
-        unordered_set<string> unsetData     = cur->getDataToBeUnset();
+        unordered_map<string, int> setData  = trans->getData()->getData();
+        unordered_set<string> unsetData     = trans->getData()->getDataToBeUnset();
         unordered_map<string, int>::iterator itSet;
         for (itSet = setData.begin(); itSet != setData.end(); itSet ++) {
             database->set(itSet->first, itSet->second);
@@ -161,20 +224,19 @@ private:
         for (itUnset = unsetData.begin(); itUnset != unsetData.end(); itUnset ++) {
             database->unset(*itUnset);
         }
-        cur = nullptr;
-        trans.clear();
+        trans->clear();
     }
     void rollbackTransaction() {
-        if (cur == nullptr) {
+        if (trans->empty()) {
             cout << "> NO TRANSACTION" << endl;
             return;
         }
-        if (trans.size() > 0) {
-            cur = trans.back();
-            trans.pop_back();
-        } else {
-            cur = nullptr;
+        vector<vector<string>> logs = trans->getCur()->getRecoverLogs();
+        while (logs.size() > 0) {
+            executeSingleCmd(logs.back());
+            logs.pop_back();
         }
+        trans->rollback();
     }
     int executeSingleCmd(vector<string> cmd) {
         if (cmd[0] == "SET") {
@@ -183,8 +245,14 @@ private:
             } else {
                 string key = cmd[1];
                 int value = stoi(cmd[2]);
-                if (cur != nullptr) {
-                    cur->set(key, value);
+                if (!trans->empty()) {
+                    if (database->ifContains(key) && !trans->ifInserted(key)) {
+                        trans->markAsInserted(key);
+                        int cur = database->get(key);
+                        trans->getData()->set(key, cur);
+                    }
+                    trans->addTransactionLog(cmd);
+                    trans->getData()->set(key, value);
                 } else {
                     database->set(key, value);
                 }
@@ -194,8 +262,14 @@ private:
                 return 0;
             } else {
                 string key = cmd[1];
-                if (cur != nullptr) {
-                    cur->unset(key);
+                if (!trans->empty()) {
+                    if (database->ifContains(key) && !trans->ifInserted(key)) {
+                        trans->markAsInserted(key);
+                        int cur = database->get(key);
+                        trans->getData()->set(key, cur);
+                    }
+                    trans->addTransactionLog(cmd);
+                    trans->getData()->unset(key);
                 } else {
                     database->unset(key);
                 }
@@ -206,9 +280,9 @@ private:
             } else {
                 string key = cmd[1];
                 cout << "> ";
-                if (cur != nullptr && (cur->ifContains(key) || cur->ifToBeUnset(key))) {
-                    if (cur->ifContains(key)) {
-                        cout << cur->get(key);
+                if (!trans->empty() && (trans->getData()->ifContains(key) || trans->getData()->ifToBeUnset(key))) {
+                    if (trans->getData()->ifContains(key)) {
+                        cout << trans->getData()->get(key);
                     } else {
                         cout << "NULL";
                     }
@@ -227,8 +301,8 @@ private:
             } else {
                 int value = stoi(cmd[1]);
                 int num = 0;
-                if (cur != nullptr) {
-                    num = getDataCntSizeWithout(database->getCntForValue(value)) + cur->numberEqualTo(value);
+                if (!trans->empty()) {
+                    num = getDataCntSizeWithout(database->getCntForValue(value)) + trans->getData()->numberEqualTo(value);
                 } else {
                     num = database->numberEqualTo(value);
                 }
@@ -251,19 +325,16 @@ private:
         unordered_set<string>::iterator it;
         unordered_set<string> origin = current;
         for (it = origin.begin(); it != origin.end(); it ++) {
-            if (cur->ifToBeUnset(*it) || cur->ifContains(*it)) {
+            if (trans->getData()->ifToBeUnset(*it) || trans->getData()->ifContains(*it)) {
                 current.erase(*it);
             }
         }
         return int(current.size());
     }
 public:
-    static SimpleDatabaseConsole* getInstance() {
-        static SimpleDatabaseConsole* sdInstance;
-        if (sdInstance == nullptr) {
-            sdInstance = new SimpleDatabaseConsole();
-        }
-        return sdInstance;
+    void init(shared_ptr<DatabaseData> db, shared_ptr<TransactionSet> ts) {
+        trans       = make_shared<TransactionSet>();
+        database    = make_shared<DatabaseData>();
     }
     bool execute(string input) {
         vector<string> cmd = spliteCmd(input);
@@ -281,16 +352,18 @@ public:
 };
 int main(int argc, const char * argv[]) {
     /* Enter your code here. Read input from STDIN. Print output to STDOUT */
-    SimpleDatabaseConsole* inst = SimpleDatabaseConsole::getInstance();
+    shared_ptr<DatabaseData> db = make_shared<DatabaseData>();
+    shared_ptr<TransactionSet> ts = make_shared<TransactionSet>();
+    shared_ptr<SimpleDatabaseConsole> simple = make_shared<SimpleDatabaseConsole>();
+    simple->init(db, ts);
     vector<string> res;
     while (true) {
         string cmd;
         getline(cin, cmd);
-        if (inst->execute(cmd)) {
+        if (simple->execute(cmd)) {
             break;
         }
     }
-    delete inst;
     return 0;
 }
 
