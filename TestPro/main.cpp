@@ -238,6 +238,14 @@ private:
         }
         trans->rollback();
     }
+    void copyToTransaction(string key) {
+        if (!database->ifContains(key) || trans->ifInserted(key)) {
+            return;
+        }
+        trans->markAsInserted(key);
+        int cur = database->get(key);
+        trans->getData()->set(key, cur);
+    }
     int executeSingleCmd(vector<string> cmd) {
         if (cmd[0] == "SET") {
             if (cmd.size() != 3) {
@@ -246,11 +254,7 @@ private:
                 string key = cmd[1];
                 int value = stoi(cmd[2]);
                 if (!trans->empty()) {
-                    if (database->ifContains(key) && !trans->ifInserted(key)) {
-                        trans->markAsInserted(key);
-                        int cur = database->get(key);
-                        trans->getData()->set(key, cur);
-                    }
+                    copyToTransaction(key);
                     trans->addTransactionLog(cmd);
                     trans->getData()->set(key, value);
                 } else {
@@ -263,11 +267,7 @@ private:
             } else {
                 string key = cmd[1];
                 if (!trans->empty()) {
-                    if (database->ifContains(key) && !trans->ifInserted(key)) {
-                        trans->markAsInserted(key);
-                        int cur = database->get(key);
-                        trans->getData()->set(key, cur);
-                    }
+                    copyToTransaction(key);
                     trans->addTransactionLog(cmd);
                     trans->getData()->unset(key);
                 } else {
@@ -302,7 +302,7 @@ private:
                 int value = stoi(cmd[1]);
                 int num = 0;
                 if (!trans->empty()) {
-                    num = getDataCntSizeWithout(database->getCntForValue(value)) + trans->getData()->numberEqualTo(value);
+                    num = getDataCntSizeWithoutTrans(database->getCntForValue(value)) + trans->getData()->numberEqualTo(value);
                 } else {
                     num = database->numberEqualTo(value);
                 }
@@ -321,7 +321,7 @@ private:
         }
         return 1;
     }
-    int getDataCntSizeWithout(unordered_set<string> current) {
+    int getDataCntSizeWithoutTrans(unordered_set<string> current) {
         unordered_set<string>::iterator it;
         unordered_set<string> origin = current;
         for (it = origin.begin(); it != origin.end(); it ++) {
