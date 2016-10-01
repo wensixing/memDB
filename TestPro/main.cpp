@@ -107,14 +107,14 @@ private:
     DataSet &ds; // DataSet to commit changes
     shared_ptr<DataSet>   transData;
     unordered_set<string> dataToBeUnset;
-    stack<TransactionLog> transLogs;
+    vector<TransactionLog> transLogs;
     
     bool ifToBeUnset(const string &key) {
         return dataToBeUnset.find(key) != dataToBeUnset.end();
     }
     
     void addLog(vector<string> cmd) {
-        transLogs.top().push_back(cmd);
+        transLogs.back().push_back(cmd);
     }
     
     void doSet(const string &key, int value) {
@@ -134,22 +134,8 @@ private:
     void clear() {
         transData = make_shared<DataSet>();
         dataToBeUnset.clear();
-        stack<TransactionLog>().swap(transLogs);
+        transLogs.clear();
         startNew();
-    }
-    int getDataCntSizeWithoutTrans(unordered_set<string> current, int value) {
-        unordered_map<string, int> data = transData->getData();
-        for (auto it = data.begin(); it != data.end(); it ++) {
-            if (current.find(it->first) != current.end()) {
-                current.erase(it->first);
-            }
-        }
-        for (auto it = dataToBeUnset.begin(); it != dataToBeUnset.end(); it ++) {
-            if (current.find(*it) != current.end()) {
-                current.erase(*it);
-            }
-        }
-        return int(current.size());
     }
 public:
     Transaction(DataSet &ds) : ds(ds) {
@@ -191,17 +177,29 @@ public:
         doUnset(key);
     }
     
-    virtual int  numberEqualTo(int value) {
-        return getDataCntSizeWithoutTrans(ds.getCntForValue(value), value) + transData->numberEqualTo(value);
+    virtual int numberEqualTo(int value) {
+        unordered_map<string, int> trData = transData->getData();
+        unordered_set<string> current = ds.getCntForValue(value);
+        for (auto it = trData.begin(); it != trData.end(); it ++) {
+            if (current.find(it->first) != current.end()) {
+                current.erase(it->first);
+            }
+        }
+        for (auto it = dataToBeUnset.begin(); it != dataToBeUnset.end(); it ++) {
+            if (current.find(*it) != current.end()) {
+                current.erase(*it);
+            }
+        }
+        return int(current.size()) + transData->numberEqualTo(value);
     }
     
     void startNew() {
         TransactionLog newlog;
-        transLogs.push(newlog);
+        transLogs.push_back(newlog);
     }
     
     void rollback() {
-        TransactionLog &log = transLogs.top();
+        TransactionLog &log = transLogs.back();
         
         while (log.size() > 0) {
             // executeSingleCmd(log.back());
@@ -219,7 +217,7 @@ public:
             log.pop_back();
         }
         
-        transLogs.pop();
+        transLogs.pop_back();
     }
     
     void commit() {
