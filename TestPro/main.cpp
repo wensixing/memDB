@@ -83,12 +83,12 @@ public:
         }
         return num;
     }
-    unordered_set<string> getCntForValue(int value) {
-        unordered_set<string> res;
+    const unordered_set<string> &getCntForValue(int value) {
+        static unordered_set<string> nullSet;
         if (cnt.find(value) != cnt.end()) {
-            res = cnt[value];
+            return cnt[value];
         }
-        return res;
+        return nullSet;
     }
     
     // merge data in 'src' into 'dest' (update if exists, insert if not)
@@ -178,19 +178,20 @@ public:
     }
     
     virtual int numberEqualTo(int value) {
-        unordered_map<string, int> trData = transData->getData();
-        unordered_set<string> current = ds.getCntForValue(value);
+        const unordered_map<string, int> &trData = transData->getData();
+        const unordered_set<string> &current = ds.getCntForValue(value);
+        int len = int(current.size());
         for (auto it = trData.begin(); it != trData.end(); it ++) {
             if (current.find(it->first) != current.end()) {
-                current.erase(it->first);
+                len --;
             }
         }
         for (auto it = dataToBeUnset.begin(); it != dataToBeUnset.end(); it ++) {
             if (current.find(*it) != current.end()) {
-                current.erase(*it);
+                len --;
             }
         }
-        return int(current.size()) + transData->numberEqualTo(value);
+        return len + transData->numberEqualTo(value);
     }
     
     void startNew() {
