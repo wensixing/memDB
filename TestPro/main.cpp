@@ -51,7 +51,7 @@ private:
         return data.find(key) != data.end();
     }
 public:
-    unordered_map<string, int> getData() {
+    const unordered_map<string, int> &getData() {
         return data;
     }
     virtual bool get(const string &key, int &value) {
@@ -102,7 +102,7 @@ public:
 
 class Transaction : public DataStorage {
 private:
-    typedef vector<vector<string>> TransactionLog;
+    typedef unordered_map<string, string> TransactionLog;
     
     DataSet &ds; // DataSet to commit changes
     shared_ptr<DataSet>   transData;
@@ -113,8 +113,11 @@ private:
         return dataToBeUnset.find(key) != dataToBeUnset.end();
     }
     
-    void addLog(vector<string> cmd) {
-        transLogs.back().push_back(cmd);
+    void addLog(string key, string value) {
+        if (transLogs.back().find(key) != transLogs.back().end()) {
+            return;
+        }
+        transLogs.back()[key] = value;
     }
     
     void doSet(const string &key, int value) {
@@ -156,11 +159,9 @@ public:
         // add log
         int originValue;
         if (get(key, originValue)) {
-            vector<string> log = {"SET", key, to_string(originValue)};
-            addLog(log);
+            addLog(key, to_string(originValue));
         } else {
-            vector<string> log = {"UNSET", key};
-            addLog(log);
+            addLog(key, "NULL");
         }
         
         doSet(key, value);
@@ -170,8 +171,7 @@ public:
         // add log
         int originValue;
         if (get(key, originValue)) {
-            vector<string> log = {"SET", key, to_string(originValue)};
-            addLog(log);
+            addLog(key, to_string(originValue));
         }
         
         doUnset(key);
@@ -201,20 +201,12 @@ public:
     void rollback() {
         TransactionLog &log = transLogs.back();
         
-        while (log.size() > 0) {
-            // executeSingleCmd(log.back());
-            auto cmd = log.back();
-            
-            // TODO: DRY
-            if (cmd[0] == "SET") {
-                assert(cmd.size() == 3);
-                doSet(cmd[1], stoi(cmd[2]));
-            } else if (cmd[0] == "UNSET") {
-                assert(cmd.size() == 2);
-                doUnset(cmd[1]);
+        for (auto it = log.begin(); it != log.end(); it ++) {
+            if (it->second == "NULL") {
+                doUnset(it->first);
+            } else {
+                doSet(it->first,stoi(it->second));
             }
-            
-            log.pop_back();
         }
         
         transLogs.pop_back();
