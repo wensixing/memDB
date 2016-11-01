@@ -5,10 +5,10 @@ Data Controll:
 
 | Commands      | Discription      |
 | ------------- |:-------------|
-| SET <name> <value> | Set the variable <name> to the <value> |
-| GET <name>     | Print out the value of variable <name> |
-| UNSET <name>  | Unset the variable <name> |
-| NUMEQUALTO <value> | Print out the number of variables that are currently to <value> |
+| SET \<name\> \<value\> | Set the variable \<name\> to the \<value\> |
+| GET \<name\>     | Print out the value of variable \<name\> |
+| UNSET \<name\>  | Unset the variable \<name\> |
+| NUMEQUALTO \<value\> | Print out the number of variables that are currently to \<value\> |
 | END  | exit the program |
 
 
